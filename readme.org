@@ -1,0 +1,140 @@
+* bevy_replicon_iroh
+
+A minimal [[https://docs.rs/iroh][iroh]] network backend for [[https://docs.rs/bevy_replicon][bevy_replicon]].
+
+Note: I /only/ implemented what I need here. Which is basically almost nothing
+special as far as replicon is concerned. I only needed simple sync between
+server to clients so this is basically the bare minimum an Iroh backend would
+need to run in replicon.
+
+The other thing I added is the ability to get to the underlying Iroh transport
+for back channel communication. I am using this for daemon <-> daemon
+communication and "clients" in my use case is simply local TUI/GUI clients
+connecting to localhost ultimately.
+
+I'm willing to add more here as I might need it but just be aware the
+constraints and use cases I started from. They likely differ from what a "real"
+video game programmer would need like prediction et al which this literally does
+not care about. Yet.
+
+*IMPORTANT* Unlike renet, all the Iroh stuff is async here via tokio for now.
+
+Also note, this crate followsSe [[https://pridever.org][Pride Versioning]] not [[https://semver.org][Semver]]. Expect only
+embarassing shame updates for a while until it graduates to a 1.x Proud release. Also note the Default here is following in the Proud version number in that I am not proud of this release. It barely works. >.<
+
+** Scope
+
+- *Direct P2P Only (for now).* No relay servers, no address-lookup/discovery
+  services (yet). Peers are dialed via direct known ~iroh::EndpointId~ e.g.
+  public key plus an explicit direct ~SocketAddr~, exchanged out of band. Again
+  reference the original purpose here, I am abusing this for both local TUI/cli
+  clients and daemon to daemon communication.
+- *A single shared priority tier* for all of replicon's traffic, ref
+  ~REPLICON_STREAM_PRIORITY~. Applications wanting additional,
+  independently-prioritized streams should open them directly on the exposed
+  ~iroh::endpoint::Connection~ themselves via ~server::IrohConnection~
+  ~client::IrohClient::connection~.
+- *A "get out of jail free" ALPN/connection is supported on the same bound
+  port/identity* via ~IrohServer::bind_with~ ~IrohClient::connect_with~'s
+  ~extra_alpns~ + ~EndpointHooks~, so that an application can layer its own
+  side-channel traffic directly on top of the same Iroh endpoint rather than
+  another network socket/connection.
+- No Iroh connection stats reporting yet. I'm a hack.
+  ~ClientStats~/~ConnectedClientStats~ stay at defaults. "I'll fix it in post"
+  (I might, I'm lazy and am not entirely sure if I need to add this pr's
+  welcome)
+- No bs client/server gating, its "just one crate".
+
+** Usage
+
+Insert ye olde Bevy Resources n such, nothing special here tbh its mostly drole boilerplate.
+
+#+begin_src rust
+app.insert_resource(IrohTokioHandle(tokio_handle))
+    .add_plugins(RepliconPlugins)
+    .add_plugins(RepliconIrohPlugins);
+
+// Ye server does:
+let server = IrohServer::bind(&handle, secret_key, bind_addr)?;
+app.insert_resource(server);
+
+// Ye client does:
+let client = IrohClient::connect(&handle, secret_key, bind_addr, peer_addr)?;
+app.insert_resource(client);
+#+end_src
+
+Both ~RepliconIrohServerPlugin~ and ~RepliconIrohClientPlugin~ are always
+added by ~RepliconIrohPlugins~ as of readme writing cause I can't come up with a good reason to separate them.
+
+The Bevy systems are only gated upon ~IrohServer~ or ~IrohClient~ presence as
+resources. This means an application can swap which resource is present at
+runtime like the weirdo I am. Aka remove one Resource, add the other and kablamo
+you're now a client and not a server. Why you wnt to do this I have no idea. I
+barely understand replicon man. Suggestions by non hacks who do welcome. It made
+sense at the time as I was thinking of a single bevy App moving betwixt Server
+and Client. I've abandonded that for my own use case but left this distinction
+in. I'm easily convinced past me is an idiot though.
+
+Ref ~examples/echo_server.rs~ and ~examples/echo_client.rs~ for a stupid/minimal
+example of how you can use this to echo stuff between a server and client. High
+technology crap I tells ya.
+
+Its /just/ a replicated counter ticking on the server that is directly observed
+by client(s).
+
+For a more "complect" (its an old english word and I'm bringing fetch back)
+nixos/vm based example ref: ~nix/integration-00-echo.nix~ for those same two
+examples but "as two nixos tests" instead.
+
+#+begin_src sh
+# A
+cargo run --example echo_server -- --bind 127.0.0.1:4433
+
+# B, prolly another terminal
+cargo run --example echo_client -- --server-id $IROH_ID --server-addr 127.0.0.1:4433
+#+end_src
+
+** TODO
+
+An imperial /and/ metric butt ton(ne?) either way a lot to do. Off the top of my
+head:
+- I have a lot of things I abuse on top of this that make using Iroh in this way
+  easier. Not sure where else to stick em so maybe here is a good spot. Mostly
+  relating to swapping betwixt paths and ensuring a direct connection and retry
+  and other shenanigans.
+- Adding more "game" related code, this literally is "what is the minimum a
+  replicon client/server need be".
+- I need to figure out client/server restart behavior right now its pretty derp.
+- Non async approach for Iroh?
+- At least non Tokio approach. I avoided the Bevy i/o stuff cause I abuse os
+  level threads with async tokio and channel communication in my own apps.
+- I dunno insert "mitch forgot to add xyz" here. I'm sure it'll fit.
+
+** Status
+
+I mean it "works", I am abusing this for "real" code that isn't open source. But
+I'm sure bugs abound. Treat it like it is, at best MVP. I have beaten the piss
+out of it in internal tests so the overall approach works fine for daemon use
+cases that need to talk directly to each other. Beyond that, only the shadow knows...
+
+** Development Shenanigans
+
+I abuse both [[https://github.com/nix-community/flakelight][flakelight]] and my
+own crap on top of it for the rust bits ref
+[[https://github.com/mitchty/flakelight-rust][flakelight-rust]] for all me own
+testing and whatnot.
+
+#+begin_src sh
+nix develop
+nix flake check
+#+end_src
+
+Its a cargo crate though so you don't /need/ nix but... it helps.
+
+** Avian Intelligence Disclaimer
+
+I made Claude build most of the original tests and nixos tests and some of the
+readme nonsense. Beyond that I fixed its derp and hopefully improved upon its
+bird brained output. But if that offends you, well now you have me telling you I
+abused the Frenchman for some bits of this. Not all though so I dunno whatever
+dude you do you.

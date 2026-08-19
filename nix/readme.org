@@ -1,0 +1,19 @@
+*  NixOS integration tests for all this shenanigans
+
+This is to remind me of who I really am, err sorry I mean remind future me to
+stick more crap in here.
+
+** Nixos tests n such
+
+- integration-00-echo.nix is just the examples as a two VM node smoke test. The
+  ~server~ node runs ~echo_server~, and ~client~ node dials it once its endpoint id
+  and address are known, and the test asserts the client actually observes the
+  server's replicated counter incrementing to make sure this stuff works between
+  "real" well virtual systems in this case.
+
+** To run this crap
+
+#+begin_src sh
+nix flake check
+nix build .#checks.x86_64-linux.bevy-replicon-iroh-int-echo
+#+end_src

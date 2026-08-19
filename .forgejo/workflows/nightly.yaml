@@ -1,0 +1,23 @@
+name: Nightly Dependency Update Check
+
+on:
+  schedule:
+    - cron: "53 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  nightly:
+    name: nightly
+    runs-on: nix
+    steps:
+      - name: Checkout code
+        uses: https://data.forgejo.org/actions/checkout@v4
+
+      - name: Bump cargo and flake locks
+        run: nix run .#update
+
+      - name: Run flake check
+        run: nix flake check -L
+
+      - name: Run ci checks
+        run: nix run .#ci

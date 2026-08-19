@@ -1,0 +1,29 @@
+[graph]
+targets = []
+
+[advisories]
+ignore = []
+
+[licenses]
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "BSD-3-Clause",
+  "BSD-2-Clause",
+  "ISC",
+  "Unicode-3.0",
+  "BlueOak-1.0.0",
+  "Zlib",
+  "Unlicense",
+  "MPL-2.0",
+  "CDLA-Permissive-2.0",
+  "BSL-1.0",
+]
+
+[bans]
+multiple-versions = "warn"
+#wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "warn"
