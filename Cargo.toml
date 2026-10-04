@@ -1,6 +1,6 @@
 [package]
 name = "bevy_replicon_iroh"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 license = "BlueOak-1.0.0"
 description = "Minimal iroh backend for bevy_replicon"
