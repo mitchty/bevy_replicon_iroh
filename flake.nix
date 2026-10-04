@@ -43,6 +43,9 @@
           binaries.echo_client = {
             cargoExtraArgs = "--example echo_client";
           };
+          binaries.relay_server = {
+            cargoExtraArgs = "--example relay_server";
+          };
 
           treefmtConfig = {
             projectRootFile = "flake.nix";
@@ -76,10 +79,14 @@
           pkgs = import nixpkgs { inherit system; };
           echo_server = rustFlake.packages.${system}.echo_server;
           echo_client = rustFlake.packages.${system}.echo_client;
+          relay_server = rustFlake.packages.${system}.relay_server;
         in
         {
           bevy-replicon-iroh-int-echo = pkgs.callPackage ./nix/integration-00-echo.nix {
             inherit echo_server echo_client;
+          };
+          bevy-replicon-iroh-int-relay = pkgs.callPackage ./nix/integration-01-relay.nix {
+            inherit echo_server echo_client relay_server;
           };
         };
     in

@@ -18,7 +18,33 @@ use bevy_replicon::shared::backend::connected_client::{NetworkId, NetworkIdMap};
 use crate::frame;
 use crate::{ALPN, IrohTokioHandle, REPLICON_STREAM_PRIORITY};
 
-pub struct RepliconIrohServerPlugin;
+/// Iroh server configuration for [`RepliconIrohServerPlugin`], also usable
+/// standalone with [`IrohServer::bind`], [`IrohServer::bind_with`],
+/// [`IrohServer::shutdown`] without adding the plugin.
+#[derive(Resource, Debug, Clone, Copy)]
+pub struct IrohServerConfig {
+    /// Upper bound [`IrohServer::shutdown`] waits for the endpoint and
+    /// background accept task to close gracefully before giving up.
+    /// Captured on the resulting [`IrohServer`] calling [`IrohServer::bind`] or
+    /// [`IrohServer::bind_with`].
+    pub shutdown_timeout: Duration,
+}
+
+impl Default for IrohServerConfig {
+    fn default() -> Self {
+        Self {
+            shutdown_timeout: Duration::from_secs(3),
+        }
+    }
+}
+
+/// `config` is inserted as a resource during [`Plugin::build`] so it can be
+/// read back out before calling [`IrohServer::bind`] or
+/// [`IrohServer::bind_with`] directly.
+#[derive(Default)]
+pub struct RepliconIrohServerPlugin {
+    pub config: IrohServerConfig,
+}
 
 impl Plugin for RepliconIrohServerPlugin {
     fn build(&self, app: &mut App) {
@@ -26,6 +52,8 @@ impl Plugin for RepliconIrohServerPlugin {
             app.world().contains_resource::<IrohTokioHandle>(),
             "RepliconIrohServerPlugin requires IrohTokioHandle to be inserted before it is added!"
         );
+
+        app.insert_resource(self.config);
 
         app.add_observer(disconnect_client).add_systems(
             PreUpdate,
@@ -98,6 +126,9 @@ pub struct IrohServer {
     /// UDP socket is actually guaranteed free and not simply "closed" at the
     /// QUIC protocol level when it returns.
     accept_task: tokio::task::JoinHandle<()>,
+    /// [`IrohServerConfig::shutdown_timeout`] captured at [`Self::bind`]/
+    /// [`Self::bind_with`] time, used by [`Self::shutdown`].
+    shutdown_timeout: Duration,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -106,9 +137,11 @@ struct NopHooks;
 impl EndpointHooks for NopHooks {}
 
 impl IrohServer {
-    /// Bind an iroh [`Endpoint`] to `bind_addr`. Direct P2P only, no
-    /// relay or address-lookup/discovery services yet. Spawns a
-    /// background accept loop on `handle`.
+    /// Bind an iroh [`Endpoint`] to `bind_addr` using the
+    /// [`iroh::endpoint::presets::Minimal`] preset which is direct or p2p only,
+    /// no relay or address-lookup/discovery services. Spawns a background
+    /// accept loop on `handle`. Use [`Self::bind_with`] to pick a different
+    /// Iroh preset that includes relays which need more configuration anyway.
     ///
     /// `secret_key` is this server's persistent identity. Callers are
     /// responsible for generating and persisting the key and getting
@@ -122,11 +155,27 @@ impl IrohServer {
         secret_key: SecretKey,
         bind_addr: SocketAddr,
     ) -> anyhow::Result<Self> {
-        Self::bind_with(handle, secret_key, bind_addr, Vec::new(), NopHooks)
+        Self::bind_with(
+            handle,
+            iroh::endpoint::presets::Minimal,
+            secret_key,
+            bind_addr,
+            Vec::new(),
+            NopHooks,
+            IrohServerConfig::default(),
+        )
     }
 
     /// Same as [`Self::bind`], but negotiates `extra_alpns` on the
     /// same bound endpoint and port, and installs `hooks` on the iroh endpoint.
+    ///
+    /// `preset` is handed straight to [`iroh::Endpoint::builder`], so relay,
+    /// discovery, and every other knob iroh exposes is entirely the caller's
+    /// responsibility. This crate has no opinion outside of the default is peer
+    /// to peer only. Pass [`iroh::endpoint::presets::Minimal`] for direct p2p
+    /// behavior, or use one of iroh's own relay, discovery enabled presets
+    /// instead aka `presets::N0`, or implement
+    /// [`iroh::endpoint::presets::Preset`] yourself for anything custom.
     ///
     /// This lets a client layer its own peer-to-peer side-channel traffic on
     /// the very same bound endpoint and identity alongside this crate's own
@@ -141,10 +190,12 @@ impl IrohServer {
     /// outside of its own ALPN's.
     pub fn bind_with(
         handle: &IrohTokioHandle,
+        preset: impl iroh::endpoint::presets::Preset,
         secret_key: SecretKey,
         bind_addr: SocketAddr,
         extra_alpns: Vec<Vec<u8>>,
         hooks: impl EndpointHooks + 'static,
+        config: IrohServerConfig,
     ) -> anyhow::Result<Self> {
         let (accepted_tx, accepted_rx) = unbounded();
         let (disconnected_tx, disconnected_rx) = unbounded();
@@ -155,7 +206,7 @@ impl IrohServer {
         alpns.extend(extra_alpns);
 
         let endpoint = handle.0.block_on(async {
-            let builder = iroh::Endpoint::builder(iroh::endpoint::presets::Minimal)
+            let builder = iroh::Endpoint::builder(preset)
                 .secret_key(secret_key)
                 .alpns(alpns)
                 .hooks(hooks)
@@ -227,6 +278,7 @@ impl IrohServer {
             disconnected_rx,
             extra_rx,
             accept_task,
+            shutdown_timeout: config.shutdown_timeout,
         })
     }
 
@@ -271,23 +323,25 @@ impl IrohServer {
     /// switching this bevy App to/from a server role. NB: dropping it directly
     /// abandons the connection instead of closing it so you'll leak resources.
     ///
-    /// For now we wait for up to 3 seconds as a best effort close for the
-    /// transport and os level to close out. Otherwise the peer will eventually
-    /// timeout once this is locally closed.
+    /// Waits up to [`IrohServerConfig::shutdown_timeout`] as a best effort
+    /// close for the transport and os level to close the conection. Otherwise
+    /// the peer will eventually timeout once this is locally closed by the
+    /// kernel.
     ///
-    /// Also waits in that 3 second window for the background extra-ALPN
+    /// Also waits in that same window for the background extra-ALPN
     /// accept-loop task spawned in `bind_with` to exit.
     pub fn shutdown(self, handle: &IrohTokioHandle) {
+        let shutdown_timeout = self.shutdown_timeout;
         handle.0.block_on(async {
             self.endpoint.close().await;
 
-            if tokio::time::timeout(Duration::from_secs(3), self.accept_task)
+            if tokio::time::timeout(shutdown_timeout, self.accept_task)
                 .await
                 .is_err()
             {
                 tracing::warn!(
-                    "iroh server accept task didn't exit within 3s of closing, the currently \
-                     bound UDP port may not be immediately reusable"
+                    "iroh server accept task didn't exit within {shutdown_timeout:?} of closing, the \
+                     currently bound UDP port may not be immediately reusable"
                 );
             }
         });
@@ -454,5 +508,39 @@ fn disconnect_client(remove: On<Remove, ConnectedClient>, clients: Query<&IrohCo
     if let Ok(connection) = clients.get(remove.entity) {
         debug!("disconnecting despawned client `{}`", remove.entity);
         connection.0.close(0u32.into(), b"disconnected");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Here to prove that the Preset type can reach the Iroh builder.
+    struct WrappedMinimalPreset;
+
+    impl iroh::endpoint::presets::Preset for WrappedMinimalPreset {
+        fn apply(self, builder: iroh::endpoint::Builder) -> iroh::endpoint::Builder {
+            builder.preset(iroh::endpoint::presets::Minimal)
+        }
+    }
+
+    #[test]
+    fn bind_with_accepts_a_caller_supplied_preset() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let handle = IrohTokioHandle(runtime.handle().clone());
+        let secret_key = SecretKey::generate();
+
+        let server = IrohServer::bind_with(
+            &handle,
+            WrappedMinimalPreset,
+            secret_key,
+            "127.0.0.1:0".parse().unwrap(),
+            Vec::new(),
+            NopHooks,
+            IrohServerConfig::default(),
+        )
+        .expect("bind_with should accept a non Iroh Minimal preset");
+
+        server.shutdown(&handle);
     }
 }

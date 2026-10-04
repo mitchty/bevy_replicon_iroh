@@ -1,11 +1,11 @@
 [package]
 name = "bevy_replicon_iroh"
-version = "0.0.1"
+version = "0.1.0"
 edition = "2024"
 license = "BlueOak-1.0.0"
 description = "Minimal iroh backend for bevy_replicon"
-readme = "readme.org"
-repository = "https://git.home.arpa/mitchty/bevy_replicon_iroh"
+readme = "readme.md"
+repository = "https://github.com/mitchty/bevy_replicon_iroh"
 keywords = ["bevy", "replicon", "iroh", "networking", "p2p"]
 categories = ["game-development", "network-programming"]
 
@@ -22,18 +22,21 @@ bevy_replicon = { version = "~0.41", default-features = false, features = [
   "client",
   "server",
 ] }
-iroh = "~1.0"
-tokio = { version = "1", features = ["rt", "sync", "macros", "time"] }
+iroh = "~1.3"
+tokio = { version = "~1", features = ["rt", "sync", "macros", "time"] }
 bytes = "1"
-crossbeam-channel = "0.5"
-serde = { version = "1", features = ["derive"] }
-tracing = "0.1"
-anyhow = "1"
+crossbeam-channel = "~0.5"
+serde = { version = "~1", features = ["derive"] }
+tracing = "~0.1"
+anyhow = "~1"
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-clap = { version = "4", features = ["derive"] }
+tokio = { version = "~1", features = ["rt-multi-thread", "macros"] }
+tracing-subscriber = { version = "~0.3", features = ["env-filter"] }
+clap = { version = "~4", features = ["derive"] }
+iroh-relay = { version = "~1.3", default-features = false, features = [
+  "server",
+] }
 
 [[example]]
 name = "echo_server"
@@ -43,9 +46,6 @@ path = "examples/echo_server.rs"
 name = "echo_client"
 path = "examples/echo_client.rs"
 
-[profile.dev]
-opt-level = 1
-
-[profile.release]
-lto = "thin"
-codegen-units = 1
+[[example]]
+name = "relay_server"
+path = "examples/relay_server.rs"

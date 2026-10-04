@@ -3,12 +3,15 @@
 //!
 //! Short reality:
 //!
-//! - **Direct p2p ONLY** No relay servers, no address-lookup/discovery
-//!   services. Peers are dialed directly via a known [`iroh::EndpointId`] aka
-//!   public key and explicit direct [`std::net::SocketAddr`]. Callers are
-//!   responsible for getting that information to each other out of band for now
-//!   until relays get added. I do have a use case for relays too but not a very
-//!   critical use case.
+//! - **Direct p2p by default, with optional relay.** [`IrohServer::bind`] and
+//!   [`IrohClient::connect`] use iroh's [`iroh::endpoint::presets::Minimal`]
+//!   preset which is direct or p2p only.
+//!   [`IrohServer::bind_with`]/[`IrohClient::connect_with`] may instead take
+//!   any [`iroh::endpoint::presets::Preset`], so you can pass in Iroh
+//!   `presets::N0` or a preset of your own. Peers are still always dialed via a
+//!   known [`iroh::EndpointId`] aka public key and a [`std::net::SocketAddr`];
+//!   getting that address to a peer out of band is still a *you* problem
+//!   regardless of preset.
 //! - **All of replicon's own traffic shares a single priority tier.**
 //!   I couldn't brain up a reason to make more tiers per channel so I didn't.
 //!   Applications can abuse the connection directly anyway to do evil so it
@@ -62,8 +65,8 @@ pub use iroh;
 
 use bevy::prelude::*;
 
-pub use client::{IrohClient, RepliconIrohClientPlugin};
-pub use server::{IrohConnection, IrohServer, RepliconIrohServerPlugin};
+pub use client::{IrohClient, IrohClientConfig, RepliconIrohClientPlugin};
+pub use server::{IrohConnection, IrohServer, IrohServerConfig, RepliconIrohServerPlugin};
 
 /// ALPN identifying this protocol during iroh's TLS handshake. Roughly
 /// equivalent to the renet/netcode `PROTOCOL_ID`. Peers using a different ALPN
@@ -79,6 +82,24 @@ pub const ALPN: &[u8] = b"bevy-replicon-iroh/0";
 /// iroh's own docs recommend keeping the *number* of distinct priority levels
 /// per connection small, so treat this as "the highest priority tier".
 pub const REPLICON_STREAM_PRIORITY: i32 = 100;
+
+/// Builds an [`iroh::endpoint::presets::Preset`] based off
+/// [`iroh::endpoint::presets::Minimal`] except it also applies `relay_mode`.
+/// Mostly here just to use an http relay in the examples for now but if you
+/// want to use it too its here.
+pub fn minimal_with_relay(relay_mode: iroh::RelayMode) -> impl iroh::endpoint::presets::Preset {
+    struct MinimalWithRelay(iroh::RelayMode);
+
+    impl iroh::endpoint::presets::Preset for MinimalWithRelay {
+        fn apply(self, builder: iroh::endpoint::Builder) -> iroh::endpoint::Builder {
+            builder
+                .preset(iroh::endpoint::presets::Minimal)
+                .relay_mode(self.0)
+        }
+    }
+
+    MinimalWithRelay(relay_mode)
+}
 
 /// `tokio::runtime::Handle` resource this crate needs the caller to provide and
 /// insert before adding [`RepliconIrohServerPlugin`] and
@@ -102,8 +123,8 @@ pub struct RepliconIrohPlugins;
 impl PluginGroup for RepliconIrohPlugins {
     fn build(self) -> bevy::app::PluginGroupBuilder {
         bevy::app::PluginGroupBuilder::start::<Self>()
-            .add(RepliconIrohServerPlugin)
-            .add(RepliconIrohClientPlugin)
+            .add(RepliconIrohServerPlugin::default())
+            .add(RepliconIrohClientPlugin::default())
     }
 }
 
@@ -131,7 +152,7 @@ mod tests {
     fn server_plugin_panics_without_iroh_tokio_handle() {
         let mut app = App::new();
         app.add_plugins((MinimalPlugins, StatesPlugin, bevy_replicon::RepliconPlugins))
-            .add_plugins(RepliconIrohServerPlugin);
+            .add_plugins(RepliconIrohServerPlugin::default());
     }
 
     #[test]
@@ -139,6 +160,6 @@ mod tests {
     fn client_plugin_panics_without_iroh_tokio_handle() {
         let mut app = App::new();
         app.add_plugins((MinimalPlugins, StatesPlugin, bevy_replicon::RepliconPlugins))
-            .add_plugins(RepliconIrohClientPlugin);
+            .add_plugins(RepliconIrohClientPlugin::default());
     }
 }

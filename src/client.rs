@@ -27,21 +27,45 @@ struct NopHooks;
 
 impl EndpointHooks for NopHooks {}
 
-/// Upper bound on how long [`IrohClient::connect`] will block waiting for
-/// the endpoint to bind, the QUIC handshake to complete, and the
-/// replicon-marker handshake on top of it. Without this, dialing an
-/// unreachable/dead peer could block the calling thread indefinitely,
-/// since `connect` runs synchronously, typically from inside a
-/// bevy exclusive system and iroh/QUIC itself has no
-/// built-in bound on a dial that never gets a response. Chosen somewhat
-/// arbitrarily to be large enough for real-world NAT traversal/path
-/// negotiation rather than derived from any protocol-level deadline.
-// TODO: This should likely be a plugin value, or probably better an Entity
-// that can be observed so callers can adjust this at runtime even based on the
-// connection or other details like RTT to/from an endpoint.
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+/// Iroh client configuration for [`RepliconIrohClientPlugin`], also usable
+/// standalone with [`IrohClient::connect`], [`IrohClient::connect_with`],
+/// [`IrohClient::disconnect`] without adding the plugin.
+#[derive(Resource, Debug, Clone, Copy)]
+pub struct IrohClientConfig {
+    /// Upper bound on how long [`IrohClient::connect`] and
+    /// [`IrohClient::connect_with`] will block waiting for the endpoint to
+    /// bind, the QUIC handshake to complete, and the replicon-marker
+    /// handshake on top of it. Without this, dialing an unreachable/dead peer
+    /// could block the calling thread indefinitely, since `connect` runs
+    /// synchronously, typically from inside a bevy exclusive system.
+    /// Iroh/QUIC itself has no built-in bound on a dial that never gets a
+    /// response. The 15s default is chosen somewhat arbitrarily to be large
+    /// enough for real-world NAT traversal/path negotiation rather than
+    /// derived from any protocol-level deadline.
+    pub connect_timeout: Duration,
+    /// Upper bound [`IrohClient::disconnect`] waits for the connection,
+    /// endpoint, and background accept task to close gracefully before giving
+    /// up. Captured via [`IrohClient`] calling [`IrohClient::connect`] or
+    /// [`IrohClient::connect_with`].
+    pub disconnect_timeout: Duration,
+}
 
-pub struct RepliconIrohClientPlugin;
+impl Default for IrohClientConfig {
+    fn default() -> Self {
+        Self {
+            connect_timeout: Duration::from_secs(15),
+            disconnect_timeout: Duration::from_secs(3),
+        }
+    }
+}
+
+/// `config` is inserted as a resource during [`Plugin::build`] time so it can
+/// be read back out before calling [`IrohClient::connect`] and
+/// [`IrohClient::connect_with`].
+#[derive(Default)]
+pub struct RepliconIrohClientPlugin {
+    pub config: IrohClientConfig,
+}
 
 impl Plugin for RepliconIrohClientPlugin {
     fn build(&self, app: &mut App) {
@@ -49,6 +73,8 @@ impl Plugin for RepliconIrohClientPlugin {
             app.world().contains_resource::<IrohTokioHandle>(),
             "RepliconIrohClientPlugin requires IrohTokioHandle to be inserted before it is added!"
         );
+
+        app.insert_resource(self.config);
 
         app.add_systems(
             PreUpdate,
@@ -99,21 +125,36 @@ pub struct IrohClient {
     /// well so that the OS UDP socket is actually guaranteed free by the time
     /// this returns.
     accept_task: tokio::task::JoinHandle<()>,
+    /// [`IrohClientConfig::disconnect_timeout`] captured at
+    /// [`Self::connect`]/[`Self::connect_with`] time, used by
+    /// [`Self::disconnect`].
+    disconnect_timeout: Duration,
 }
 
 impl IrohClient {
-    /// Binds a local iroh [`Endpoint`] to `bind_addr` and dials `peer`
-    /// directly. No Iroh relay or address-lookup/discovery for now. "future
-    /// mitch problem" `peer` *must* already contain a direct socket address,
-    /// via `EndpointAddr::new(id).with_ip_addr(addr)`. This blokcs until the
-    /// connection and persistent streams are fully established.
+    /// Binds a local iroh [`Endpoint`] to `bind_addr` using
+    /// [`iroh::endpoint::presets::Minimal`] preset and dial `peer` directly.
+    /// the `peer` *must* already contain a direct socket address via
+    /// `EndpointAddr::new(id).with_ip_addr(addr)`. This blocks until the
+    /// connection and persistent streams are fully established. Use
+    /// [`Self::connect_with`] directly to provide a different preset, e.g. one
+    /// of iroh's relay-enabled presets or your own tweaked config.
     pub fn connect(
         handle: &IrohTokioHandle,
         secret_key: SecretKey,
         bind_addr: SocketAddr,
         peer: EndpointAddr,
     ) -> anyhow::Result<Self> {
-        Self::connect_with(handle, secret_key, bind_addr, peer, Vec::new(), NopHooks)
+        Self::connect_with(
+            handle,
+            iroh::endpoint::presets::Minimal,
+            secret_key,
+            bind_addr,
+            peer,
+            Vec::new(),
+            NopHooks,
+            IrohClientConfig::default(),
+        )
     }
 
     /// Same as [`Self::connect`], but additionally lets you add `extra_alpns`
@@ -124,6 +165,14 @@ impl IrohClient {
     /// client or server role for replicon itself. Use this as a backchannel
     /// over Iroh outside of replicon traffic for whatever nefarious purpose you
     /// can concoct.
+    ///
+    /// `preset` is simply given to [`iroh::Endpoint::builder`], mirroring
+    /// [`crate::server::IrohServer::bind_with`] for the relay, discovery, and
+    /// every other knob iroh exposes is entirely up to the caller to provide.
+    /// Pass [`iroh::endpoint::presets::Minimal`] for direct, p2p only behavior,
+    /// or one of iroh's presets e.g. `presets::N0` or implement
+    /// [`iroh::endpoint::presets::Preset`] yourself for anything that falls
+    /// outside of any config.
     ///
     /// A client's endpoint is bound at `bind_addr` exactly like a server is.
     /// Iroh doesn't distinguish "client" vs "server" at the `Endpoint` level,
@@ -144,22 +193,26 @@ impl IrohClient {
     /// needed seems to work the best under load. This extra alpn approach and
     /// `IrohServer::bind_with` are how callers get that without a second UDP
     /// socket/port in the mix.
+    // TODO: too many args... probably worth a Default struct here.
+    #[allow(clippy::too_many_arguments)]
     pub fn connect_with(
         handle: &IrohTokioHandle,
+        preset: impl iroh::endpoint::presets::Preset,
         secret_key: SecretKey,
         bind_addr: SocketAddr,
         peer: EndpointAddr,
         extra_alpns: Vec<Vec<u8>>,
         hooks: impl EndpointHooks + 'static,
+        config: IrohClientConfig,
     ) -> anyhow::Result<Self> {
         handle.0.block_on(async {
-            // Bounded by CONNECT_TIMEOUT so unreachable peers don't block forever. Yes that can happen without the timeout. Yes the timeout needs to be a plugin option. MVP!
+            // Bounded by config.connect_timeout so unreachable peers don't block forever.
             let peer_debug = format!("{peer:?}");
             let handshake = async {
                 tracing::debug!("connect: building endpoint");
                 let mut alpns = vec![ALPN.to_vec()];
                 alpns.extend(extra_alpns);
-                let builder = iroh::Endpoint::builder(iroh::endpoint::presets::Minimal)
+                let builder = iroh::Endpoint::builder(preset)
                     .secret_key(secret_key)
                     .alpns(alpns)
                     .hooks(hooks)
@@ -283,13 +336,15 @@ impl IrohClient {
                     disconnected_rx,
                     extra_rx,
                     accept_task,
+                    disconnect_timeout: config.disconnect_timeout,
                 })
             };
 
-            match tokio::time::timeout(CONNECT_TIMEOUT, handshake).await {
+            match tokio::time::timeout(config.connect_timeout, handshake).await {
                 Ok(result) => result,
                 Err(_) => Err(anyhow::anyhow!(
-                    "connect: timed out after {CONNECT_TIMEOUT:?} dialing {peer_debug}"
+                    "connect: timed out after {:?} dialing {peer_debug}",
+                    config.connect_timeout
                 )),
             }
         })
@@ -323,28 +378,29 @@ impl IrohClient {
     /// switching this bevy App to/from a server role. NB: dropping it directly
     /// abandons the connection instead of closing it so you'll leak resources.
     ///
-    /// For now we wait for up to 3 seconds as a best effort close for the
-    /// transport and os level to close out. Otherwise the peer will eventually
-    /// timeout once this is locally closed.
+    /// Waits up to [`IrohClientConfig::disconnect_timeout`] as a best effort
+    /// close timeout for the transport and os level to close. Otherwise the
+    /// peer will eventually timeout once the connection is locally closed
+    /// without this.
     ///
-    /// Also waits in that 3 second window for the background extra-ALPN
+    /// Also waits in that same window for the background extra-ALPN
     /// accept-loop task spawned in `connect_with` to exit. Which is the same
     /// "Address already in use" race `IrohServer::shutdown` guards against as
     /// well as that task holds its own `Endpoint` clone, independent of the one
     /// `close()` above acts on.
-    // TODO: 3s graceful timeout should be a plugin option too...
     pub fn disconnect(self, handle: &IrohTokioHandle) {
+        let disconnect_timeout = self.disconnect_timeout;
         handle.0.block_on(async {
             self.connection.close(0u32.into(), b"disconnecting");
             self.endpoint.close().await;
 
-            if tokio::time::timeout(Duration::from_secs(3), self.accept_task)
+            if tokio::time::timeout(disconnect_timeout, self.accept_task)
                 .await
                 .is_err()
             {
                 tracing::warn!(
-                    "iroh client accept task didn't exit within 3s of closing, the currently bound UDP \
-                     port may not be immediately reusable"
+                    "iroh client accept task didn't exit within {disconnect_timeout:?} of closing, the \
+                     currently bound UDP port may not be immediately reusable"
                 );
             }
         });
