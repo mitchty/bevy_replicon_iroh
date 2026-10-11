@@ -56,8 +56,6 @@
 //! just open an issue and yell at me there I guess. Iroh handles the ordering
 //! of packets at this point anyway so shrug.
 pub mod client;
-#[doc(hidden)] // If I bother yeeting this up to crates.io
-pub mod examples_common;
 pub mod frame;
 pub mod server;
 

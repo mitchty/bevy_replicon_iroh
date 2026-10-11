@@ -1,18 +1,16 @@
 //! Minimal client example
 //!
-//! Simply connects to the  `echo_server` and logs `Counter`.
+//! Simply connects to the `echo_server` and logs `Counter`.
 //!
 //! Run via ye olde car go:
 //! ```sh
-//! cargo run --example echo_client -- --server-id IROH_ID --server-addr 127.0.0.1:4433
-//!     ```
+//! cargo run --bin echo_client -- --server-id IROH_ID --server-addr 127.0.0.1:4433
+//! ```
 //!
-//! Hint: just paste the Iroh identity `IROH_ID` from what `echo_server`'s
-//! id=...` line or don't its your life. Pass `--relay` on both example binaries
-//! to use the default iroh preset that does relay and discovery instead of the
-//! direct-only default this library includes, or `--relay-url URL` on both ends
-//! to point at your own relay which takes precedence over whatever `--relay` is
-//! given.
+//! Hint: paste the `id=...` line from `echo_server`. Pass `--relay` on both
+//! ends to use the default iroh preset with relay and discovery, or
+//! `--relay-url URL` to point at your own relay (takes precedence over
+//! `--relay`).
 
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -22,10 +20,10 @@ use bevy::prelude::*;
 use bevy::state::app::StatesPlugin;
 use bevy::time::common_conditions::on_timer;
 use bevy_replicon::prelude::*;
-use bevy_replicon_iroh::examples_common::Counter;
 use bevy_replicon_iroh::iroh::{EndpointAddr, EndpointId};
 use bevy_replicon_iroh::{IrohClient, IrohClientConfig, IrohTokioHandle, RepliconIrohPlugins};
 use clap::Parser;
+use examples_common::Counter;
 
 #[derive(Parser)]
 struct Args {
@@ -36,28 +34,22 @@ struct Args {
     #[arg(long)]
     server_id: EndpointId,
 
-    /// The server's dialable direct socket address aka ip address.
+    /// The server's dialable direct socket address.
     #[arg(long)]
     server_addr: SocketAddr,
 
-    /// Use iroh's "N0" preset with relay and discovery enabled instead of the
-    /// direct-only "Minimal" preset `IrohClient::connect` uses by default.
+    /// Use iroh's "N0" preset with relay and discovery enabled.
     #[arg(long)]
     relay: bool,
 
-    /// Point at a non default iroh relay instead of whatever iroh's "N0" preset
-    /// has. e.g. `http://127.0.0.1:3340` ref the `relay_server` example. Takes
-    /// precedence over `--relay` if both are given at the same time.
+    /// Point at a non-default iroh relay. e.g. `http://127.0.0.1:3340`.
+    /// Takes precedence over `--relay` if both are given.
     #[arg(long)]
     relay_url: Option<String>,
 }
 
-/// No-op endpoint hooks, same trivial empty impl the crate itself uses
-/// internally this example has no hooks of its own, it just needs something
-/// implementing `EndpointHooks` to call `IrohClient::connect_with`.
 #[derive(Debug, Clone, Copy)]
 struct NopHooks;
-
 impl bevy_replicon_iroh::iroh::endpoint::EndpointHooks for NopHooks {}
 
 fn main() -> anyhow::Result<()> {
@@ -69,9 +61,6 @@ fn main() -> anyhow::Result<()> {
 
     let secret_key = bevy_replicon_iroh::iroh::SecretKey::generate();
 
-    // A plain IP-only EndpointAddr is enough when dialing directly, but with a
-    // self-hosted relay there's no discovery service to tell the client the
-    // server is reachable via that relay so we add that in as well.
     let mut peer_addrs = vec![bevy_replicon_iroh::iroh::TransportAddr::Ip(
         args.server_addr,
     )];
@@ -122,8 +111,6 @@ fn main() -> anyhow::Result<()> {
     tracing::info!(id = %args.server_id, addr = %args.server_addr, "echo_client: connected");
 
     let mut app = App::new();
-    // IrohTokioHandle must be inserted before `RepliconIrohPlugins` is
-    // added.
     app.insert_resource(handle)
         .add_plugins(MinimalPlugins)
         .add_plugins(StatesPlugin)

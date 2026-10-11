@@ -1,0 +1,44 @@
+[package]
+name = "examples"
+version = "0.0.0"
+edition = "2024"
+publish = false
+license.workspace = true
+
+[dependencies]
+bevy_replicon_iroh = { workspace = true }
+examples_common = { workspace = true }
+bevy = { workspace = true, features = [
+  "libm",
+  "async-io",
+  "multi_threaded",
+  "bevy_log",
+  "async_executor",
+  "bevy_state",
+] }
+bevy_replicon = { workspace = true, features = ["client", "server"] }
+iroh = { workspace = true }
+iroh-relay = { workspace = true, features = ["server"] }
+tokio = { workspace = true, features = [
+  "rt",
+  "rt-multi-thread",
+  "sync",
+  "macros",
+  "time",
+] }
+anyhow = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+
+[[bin]]
+name = "echo_server"
+path = "src/echo_server.rs"
+
+[[bin]]
+name = "echo_client"
+path = "src/echo_client.rs"
+
+[[bin]]
+name = "relay_server"
+path = "src/relay_server.rs"

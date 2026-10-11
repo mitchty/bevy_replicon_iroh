@@ -1,0 +1,28 @@
+[package]
+name = "bevy_replicon_iroh"
+version.workspace = true
+edition = "2024"
+license.workspace = true
+description = "Minimal iroh backend for bevy_replicon"
+readme = "cargo.md"
+repository = "https://github.com/mitchty/bevy_replicon_iroh"
+keywords = ["bevy", "replicon", "iroh", "networking", "p2p"]
+categories = ["game-development", "network-programming"]
+
+[dependencies]
+bevy = { workspace = true, features = [
+  "libm",
+  "async-io",
+  "multi_threaded",
+  "bevy_log",
+  "async_executor",
+  "bevy_state",
+] }
+bevy_replicon = { workspace = true, features = ["client", "server"] }
+iroh = { workspace = true }
+tokio = { workspace = true, features = ["rt", "sync", "macros", "time"] }
+bytes = { workspace = true }
+crossbeam-channel = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+tracing = { workspace = true }
+anyhow = { workspace = true }

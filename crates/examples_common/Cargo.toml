@@ -1,0 +1,11 @@
+[package]
+name = "examples_common"
+version = "0.0.0"
+edition = "2024"
+publish = false
+license.workspace = true
+
+[dependencies]
+bevy = { workspace = true, features = ["bevy_state"] }
+bevy_replicon = { workspace = true, features = ["client", "server"] }
+serde = { workspace = true, features = ["derive"] }

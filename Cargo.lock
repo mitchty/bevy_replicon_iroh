@@ -1086,20 +1086,17 @@ dependencies = [
 
 [[package]]
 name = "bevy_replicon_iroh"
-version = "0.2.0"
+version = "0.20.0"
 dependencies = [
  "anyhow",
  "bevy",
  "bevy_replicon",
  "bytes",
- "clap",
  "crossbeam-channel",
  "iroh",
- "iroh-relay",
  "serde",
  "tokio",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -2046,6 +2043,32 @@ checksum = "8be9f3dfaaffdae2972880079a491a1a8bb7cbed0b8dd7a347f668b4150a3b93"
 dependencies = [
  "event-listener",
  "pin-project-lite",
+]
+
+[[package]]
+name = "examples"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "bevy",
+ "bevy_replicon",
+ "bevy_replicon_iroh",
+ "clap",
+ "examples_common",
+ "iroh",
+ "iroh-relay",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "examples_common"
+version = "0.0.0"
+dependencies = [
+ "bevy",
+ "bevy_replicon",
+ "serde",
 ]
 
 [[package]]

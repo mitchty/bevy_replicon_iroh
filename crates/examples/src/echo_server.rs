@@ -6,15 +6,15 @@
 //!
 //! Run ye olde car go:
 //! ```sh
-//! cargo run --example echo_server -- --bind 127.0.0.1:4433
-//!     ```
+//! cargo run --bin echo_server -- --bind 127.0.0.1:4433
+//! ```
 //!
 //! And then paste the output `id=...` value into `echo_client`'s `--server-id`
-//! with with the `--server-addr` that the socket was bound to. Pass `--relay`
-//! on both ends to use iroh default preset with relay and discovery instead of
-//! the direct-only default, or `--relay-url URL` on both ends of the echo
-//! processes to point at a specific relay instead of the Iroh default. Note
-//! takes precedence over `--relay` if both given.
+//! with the `--server-addr` that the socket was bound to. Pass `--relay` on
+//! both ends to use iroh default preset with relay and discovery instead of the
+//! direct-only default, or `--relay-url URL` on both ends to point at a
+//! specific relay instead of the Iroh default. Note `--relay-url` takes
+//! precedence over `--relay` if both are given.
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -25,9 +25,9 @@ use bevy::prelude::*;
 use bevy::state::app::StatesPlugin;
 use bevy::time::common_conditions::on_timer;
 use bevy_replicon::prelude::*;
-use bevy_replicon_iroh::examples_common::{self, Counter};
 use bevy_replicon_iroh::{IrohServer, IrohServerConfig, IrohTokioHandle, RepliconIrohPlugins};
 use clap::Parser;
+use examples_common::Counter;
 
 #[derive(Parser)]
 struct Args {
@@ -35,31 +35,23 @@ struct Args {
     #[arg(long, default_value = "0.0.0.0:0")]
     bind: SocketAddr,
 
-    /// Optional path to write this server's endpoint id to, once bound - handy
-    /// for a test harness that needs to hand it to a client without scraping
-    /// stdout like a hack. I might have only added this for the nixos vm test
-    /// suite don't judge me.
+    /// Optional path to write this server's endpoint id to, once bound.
     #[arg(long)]
     id_out: Option<PathBuf>,
 
     /// Use iroh's "N0" preset with relay and discovery enabled instead of the
-    /// direct-only "Minimal" preset `IrohServer::connect` uses by default.
+    /// direct-only "Minimal" preset `IrohServer::bind` uses by default.
     #[arg(long)]
     relay: bool,
 
-    /// Point at a non default iroh relay instead of whatever iroh's "N0" preset
-    /// has. e.g. `http://127.0.0.1:3340` ref the `relay_server` example. Takes
-    /// precedence over `--relay` if both are given at the same time.
+    /// Point at a non-default iroh relay. e.g. `http://127.0.0.1:3340`.
+    /// Takes precedence over `--relay` if both are given.
     #[arg(long)]
     relay_url: Option<String>,
 }
 
-/// No-op endpoint hooks, same trivial empty impl the crate itself uses
-/// internally - this example has no hooks of its own, it just needs
-/// *something* implementing `EndpointHooks` to call `IrohServer::bind_with`.
 #[derive(Debug, Clone, Copy)]
 struct NopHooks;
-
 impl bevy_replicon_iroh::iroh::endpoint::EndpointHooks for NopHooks {}
 
 fn main() -> anyhow::Result<()> {
@@ -70,8 +62,7 @@ fn main() -> anyhow::Result<()> {
     let handle = IrohTokioHandle(runtime.handle().clone());
 
     // A real application should persist this key so its identity survives a
-    // restart kept ephemeral here for simplicity as an example. Note you can
-    // use iroh to generate this too.
+    // restart; kept ephemeral here for simplicity.
     let secret_key = bevy_replicon_iroh::iroh::SecretKey::generate();
 
     let server = if let Some(relay_url) = &args.relay_url {
@@ -139,10 +130,6 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn spawn_counter(mut commands: Commands) {
-    // `Replicated` is REQUIRED here, by default no entities are replicated in
-    // bevy_replicon, even if component type is registered via
-    // `.replicate::<T>()`, Without this marker the entity is never sent to any
-    // client. Don't forget it.
     commands.spawn((Counter(0), Replicated));
 }
 

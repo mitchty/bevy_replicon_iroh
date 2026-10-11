@@ -33,18 +33,17 @@
             ./Cargo.toml
             ./Cargo.lock
             ./deny.toml
-            ./src
-            ./examples
+            (lib.fileset.maybeMissing ./crates)
           ];
 
           binaries.echo_server = {
-            cargoExtraArgs = "--example echo_server";
+            cargoExtraArgs = "--bin echo_server";
           };
           binaries.echo_client = {
-            cargoExtraArgs = "--example echo_client";
+            cargoExtraArgs = "--bin echo_client";
           };
           binaries.relay_server = {
-            cargoExtraArgs = "--example relay_server";
+            cargoExtraArgs = "--bin relay_server";
           };
 
           treefmtConfig = {
