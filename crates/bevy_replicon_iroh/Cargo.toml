@@ -10,6 +10,7 @@ keywords = ["bevy", "replicon", "iroh", "networking", "p2p"]
 categories = ["game-development", "network-programming"]
 
 [features]
+default = ["client", "server"]
 client = ["bevy_replicon/client"]
 server = ["bevy_replicon/server"]
 
