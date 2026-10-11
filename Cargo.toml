@@ -1,16 +1,17 @@
 [package]
 name = "bevy_replicon_iroh"
-version = "0.1.1"
+version = "0.20.0"
 edition = "2024"
 license = "BlueOak-1.0.0"
 description = "Minimal iroh backend for bevy_replicon"
-readme = "readme.md"
+# The cargo readmes's not readme.md anymore
+readme = "cargo.md"
 repository = "https://github.com/mitchty/bevy_replicon_iroh"
 keywords = ["bevy", "replicon", "iroh", "networking", "p2p"]
 categories = ["game-development", "network-programming"]
 
 [dependencies]
-bevy = { version = "~0.19", default-features = false, features = [
+bevy = { version = "~0.20", default-features = false, features = [
   "libm",
   "async-io",
   "multi_threaded",
@@ -18,7 +19,7 @@ bevy = { version = "~0.19", default-features = false, features = [
   "async_executor",
   "bevy_state",
 ] }
-bevy_replicon = { version = "~0.41", default-features = false, features = [
+bevy_replicon = { version = "~0.45", default-features = false, features = [
   "client",
   "server",
 ] }

@@ -26,6 +26,26 @@ Also note, this crate follows [Pride Versioning](https://pridever.org) not
 Expect only embarassing shame updates for a while until it graduates to truly
 Proud 1.x release. It barely/mostly works so good enough for production!
 
+## Compatibility
+
+Since this is pretty "boring" code, I'll try to keep up with new bevy and
+bevy_replicon releases.
+
+But for "the record" here is a compatibility table for bevy, and this chungus
+amungus. Note, out of habit I use the *~* operator in the cargo.toml so that
+cargo should be pretty lenient with dependency resolution so you don't need to
+patch it.
+
+Cause I'm a lazy git, with 0.20 I decided I'd just make the crate version match
+the bevy version so you don't need to think much about this. But table here for
+the shame of 0.19 support or lack of me thinking about version numbers.
+
+| Bevy | bevy_replicon_iroh  |
+|---|---|
+| 0.20 | 0.20.x |
+| 0.19 | 0.1.x |
+| < 0.19 | n/a this beast didn't exist yet |
+
 ## Scope
 
 - **Direct P2P by default, relay optional.** `IrohServer::bind` and

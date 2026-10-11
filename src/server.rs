@@ -504,7 +504,7 @@ fn disconnect_by_request(
     }
 }
 
-fn disconnect_client(remove: On<Remove, ConnectedClient>, clients: Query<&IrohConnection>) {
+fn disconnect_client(remove: On<Remove<ConnectedClient>>, clients: Query<&IrohConnection>) {
     if let Ok(connection) = clients.get(remove.entity) {
         debug!("disconnecting despawned client `{}`", remove.entity);
         connection.0.close(0u32.into(), b"disconnected");
