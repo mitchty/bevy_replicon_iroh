@@ -72,7 +72,6 @@ the shame of 0.19 support or lack of me thinking about version numbers.
   `ClientStats~/~ConnectedClientStats` stay at defaults. \"I\'ll fix it
   in post\" (I might, I\'m lazy and am not entirely sure if I need to
   add this pr\'s welcome)
-- No bs client/server gating, its \"just one crate\".
 
 ## Usage
 

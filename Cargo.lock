@@ -2067,7 +2067,6 @@ name = "examples_common"
 version = "0.0.0"
 dependencies = [
  "bevy",
- "bevy_replicon",
  "serde",
 ]
 

@@ -9,6 +9,10 @@ repository = "https://github.com/mitchty/bevy_replicon_iroh"
 keywords = ["bevy", "replicon", "iroh", "networking", "p2p"]
 categories = ["game-development", "network-programming"]
 
+[features]
+client = ["bevy_replicon/client"]
+server = ["bevy_replicon/server"]
+
 [dependencies]
 bevy = { workspace = true, features = [
   "libm",
@@ -18,7 +22,7 @@ bevy = { workspace = true, features = [
   "async_executor",
   "bevy_state",
 ] }
-bevy_replicon = { workspace = true, features = ["client", "server"] }
+bevy_replicon = { workspace = true }
 iroh = { workspace = true }
 tokio = { workspace = true, features = ["rt", "sync", "macros", "time"] }
 bytes = { workspace = true }

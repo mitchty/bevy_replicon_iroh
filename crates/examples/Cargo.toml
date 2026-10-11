@@ -6,7 +6,7 @@ publish = false
 license.workspace = true
 
 [dependencies]
-bevy_replicon_iroh = { workspace = true }
+bevy_replicon_iroh = { workspace = true, features = ["client", "server"] }
 examples_common = { workspace = true }
 bevy = { workspace = true, features = [
   "libm",

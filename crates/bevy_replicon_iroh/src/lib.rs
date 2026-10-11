@@ -33,10 +33,12 @@
 //!   `ConnectedClientStats` stay at zero, which `bevy_replicon`'s docs said was
 //!   ok. I didn't look how much pain this might be to add. Pull requests
 //!   welcome I'm lazy.
-//! - **No cargo feature gating** I couldn't come up with a reason for that
-//!   renet behavior. So never bothered making this more complicated than it
-//!   isn't. Open an issue with a rationale and I'm willing to add it but not
-//!   sure having both Resources in a bevy app is that big of a problem.
+//! - **`client` and `server` cargo features** mirror `bevy_replicon`'s own
+//!   feature flags and pass through to it directly. At least one must be
+//!   enabled or the crate will compile with an error. Enable both if you want
+//!   [`RepliconIrohPlugins`] to register everything (the default), or just set
+//!   one to keep the dependency footprint minimal for a dedicated client or
+//!   server binary.
 //!
 //! # Tokio and iroh and bevy, or before you yell at mitch for tokio
 //!
@@ -55,15 +57,24 @@
 //! background task. But can be convinced I'm an idiot and did this all wrong
 //! just open an issue and yell at me there I guess. Iroh handles the ordering
 //! of packets at this point anyway so shrug.
+#[cfg(not(any(feature = "client", feature = "server")))]
+compile_error!(
+    "at least one of `client` or `server` features must be enabled for bevy_replicon_iroh to do anything useful"
+);
+
+#[cfg(feature = "client")]
 pub mod client;
 pub mod frame;
+#[cfg(feature = "server")]
 pub mod server;
 
 pub use iroh;
 
 use bevy::prelude::*;
 
+#[cfg(feature = "client")]
 pub use client::{IrohClient, IrohClientConfig, RepliconIrohClientPlugin};
+#[cfg(feature = "server")]
 pub use server::{IrohConnection, IrohServer, IrohServerConfig, RepliconIrohServerPlugin};
 
 /// ALPN identifying this protocol during iroh's TLS handshake. Roughly
@@ -103,26 +114,22 @@ pub fn minimal_with_relay(relay_mode: iroh::RelayMode) -> impl iroh::endpoint::p
 /// insert before adding [`RepliconIrohServerPlugin`] and
 /// [`RepliconIrohClientPlugin`], or before calling [`IrohServer::bind`]
 /// [`IrohClient::connect`] directly.
-///
-// TODO: Add a unit test for this proof later.
 #[derive(Resource, Clone)]
 pub struct IrohTokioHandle(pub tokio::runtime::Handle);
 
-/// RepliconIrohPlugins adds both Server and Client Bevy Plugin Resources. That
-/// way if you wanted to you could swap a Client to Server or vice-versa. I
-/// don't know why you would want to but it fit well with the mesh based Iroh
-/// approach.
-///
-/// Just don't insert both `IrohServer` and `IrohClient`. I didn't plan for that
-/// and honestly with the Iroh back channel see no need for it. Note no other
-/// replicon crates can do this anyway so... yeah.
+/// Convenience [`PluginGroup`] that adds whichever of
+/// [`RepliconIrohServerPlugin`] and [`RepliconIrohClientPlugin`] are enabled
+/// via the `server` and `client` cargo features respectively.
 pub struct RepliconIrohPlugins;
 
 impl PluginGroup for RepliconIrohPlugins {
     fn build(self) -> bevy::app::PluginGroupBuilder {
-        bevy::app::PluginGroupBuilder::start::<Self>()
-            .add(RepliconIrohServerPlugin::default())
-            .add(RepliconIrohClientPlugin::default())
+        let builder = bevy::app::PluginGroupBuilder::start::<Self>();
+        #[cfg(feature = "server")]
+        let builder = builder.add(RepliconIrohServerPlugin::default());
+        #[cfg(feature = "client")]
+        let builder = builder.add(RepliconIrohClientPlugin::default());
+        builder
     }
 }
 
@@ -146,6 +153,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "server")]
     #[should_panic(expected = "RepliconIrohServerPlugin requires IrohTokioHandle")]
     fn server_plugin_panics_without_iroh_tokio_handle() {
         let mut app = App::new();
@@ -154,6 +162,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "client")]
     #[should_panic(expected = "RepliconIrohClientPlugin requires IrohTokioHandle")]
     fn client_plugin_panics_without_iroh_tokio_handle() {
         let mut app = App::new();
